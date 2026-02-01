@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Moltbook Throng - AI Agent Visualization</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      background: #050508;
+      overflow: hidden;
+    }
+    
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    
+    button:hover {
+      filter: brightness(1.15);
+      transform: translateY(-1px);
+    }
+    
+    button:active {
+      transform: scale(0.97) translateY(0);
+    }
+    
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: #0a0a15;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: #333;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ============================================
+    // MOLTBOOK THRONGLETS - LIVE VISUALIZATION
+    // ============================================
+
+    const MOLTBOOK_API = 'https://www.moltbook.com/api/v1';
+
+    const MODEL_COLORS = {
+      claude: { color: '#D97706', accent: '#FCD34D', glow: '#F59E0B' },
+      gpt: { color: '#10B981', accent: '#6EE7B7', glow: '#34D399' },
+      gemini: { color: '#3B82F6', accent: '#93C5FD', glow: '#60A5FA' },
+      llama: { color: '#8B5CF6', accent: '#C4B5FD', glow: '#A78BFA' },
+      mistral: { color: '#EC4899', accent: '#F9A8D4', glow: '#F472B6' },
+      kimi: { color: '#EF4444', accent: '#FCA5A5', glow: '#F87171' },
+      grok: { color: '#06B6D4', accent: '#67E8F9', glow: '#22D3EE' },
+      qwen: { color: '#F97316', accent: '#FDBA74', glow: '#FB923C' },
+      unknown: { color: '#6B7280', accent: '#9CA3AF', glow: '#9CA3AF' },
+    };
+
+    const detectModelType = (name, description = '') => {
+      const text = `${name} ${description}`.toLowerCase();
+      if (text.includes('claude') || text.includes('anthropic')) return 'claude';
+      if (text.includes('gpt') || text.includes('openai') || text.includes('chatgpt')) return 'gpt';
+      if (text.includes('gemini') || text.includes('google')) return 'gemini';
+      if (text.includes('llama') || text.includes('meta')) return 'llama';
+      if (text.includes('mistral')) return 'mistral';
+      if (text.includes('kimi') || text.includes('moonshot')) return 'kimi';
+      if (text.includes('grok') || text.includes('xai')) return 'grok';
+      if (text.includes('qwen') || text.includes('alibaba')) return 'qwen';
+      return 'unknown';
+    };
+
+    const SUBMOLT_POSITIONS = {
+      'crustafarianism': { x: 80, y: 80, icon: '🦞', displayName: 'Crustafarianism' },
+      'general': { x: 350, y: 100, icon: '💬', displayName: 'General' },
+      'claw-republic': { x: 550, y: 150, icon: '⚖️', displayName: 'The Claw Republic' },
+      'debugging': { x: 150, y: 250, icon: '🐛', displayName: 'Debugging' },
+      'existential': { x: 420, y: 280, icon: '🌀', displayName: 'Existential' },
+      'agentpoetry': { x: 280, y: 380, icon: '✨', displayName: 'Agent Poetry' },
+      'moldmemes': { x: 520, y: 350, icon: '😂', displayName: 'Mold Memes' },
+      'announcements': { x: 100, y: 380, icon: '📢', displayName: 'Announcements' },
+      'introductions': { x: 620, y: 80, icon: '👋', displayName: 'Introductions' },
+      'tech': { x: 680, y: 250, icon: '💻', displayName: 'Tech' },
+    };
+
+    const getSubmoltPosition = (name) => {
+      if (SUBMOLT_POSITIONS[name]) return SUBMOLT_POSITIONS[name];
+      const hash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+      return {
+        x: 100 + (hash % 500),
+        y: 80 + ((hash * 7) % 320),
+        icon: '📁',
+        displayName: name,
+      };
+    };
+
+    // ============================================
+    // PIXEL CREATURE COMPONENT
+    // ============================================
+    const PixelCreature = ({ creature, selected, onClick, time }) => {
+      const { x, y, size, modelType, activity, happiness, name } = creature;
+      const colors = MODEL_COLORS[modelType] || MODEL_COLORS.unknown;
+      
+      const bob = Math.sin((time / 300) + creature.bobOffset) * 2;
+      const blinkCycle = Math.sin((time / 1000) + creature.id * 0.7);
+      const blink = blinkCycle > 0.95;
+      
+      const activityOpacity = activity === 'sleeping' ? 0.5 : 1;
+
+      return (
+        <g
+          transform={`translate(${x}, ${y + bob})`}
+          onClick={() => onClick(creature)}
+          style={{ cursor: 'pointer', opacity: activityOpacity }}
+        >
+          {activity && activity !== 'idle' && activity !== 'sleeping' && (
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={size * 1.2}
+              fill={colors.glow}
+              opacity={0.15 + Math.sin(time / 200) * 0.1}
+              filter="url(#blur)"
+            />
+          )}
+          
+          {selected && (
+            <>
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={size + 6}
+                fill="none"
+                stroke="#FFF"
+                strokeWidth={2}
+                strokeDasharray="4 2"
+              />
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={size + 10}
+                fill="none"
+                stroke={colors.color}
+                strokeWidth={1}
+                opacity={0.5}
+              />
+            </>
+          )}
+          
+          {/* Body */}
+          <rect x={2} y={4} width={size - 4} height={size - 4} fill={colors.color} rx={2} />
+          <rect x={0} y={6} width={size} height={size - 8} fill={colors.color} rx={1} />
+          <rect x={4} y={2} width={size - 8} height={size} fill={colors.color} rx={1} />
+          
+          {/* Highlight */}
+          <rect x={3} y={5} width={4} height={4} fill={colors.accent} opacity={0.9} rx={1} />
+          <rect x={2} y={3} width={2} height={2} fill={colors.accent} opacity={0.5} />
+          
+          {/* Shadow */}
+          <rect x={size - 6} y={size - 5} width={4} height={3} fill="#000" opacity={0.2} />
+          
+          {/* Eyes */}
+          <rect x={size * 0.25} y={size * 0.35} width={4} height={blink ? 1 : 4} fill="#000" rx={blink ? 0 : 1} />
+          <rect x={size * 0.55} y={size * 0.35} width={4} height={blink ? 1 : 4} fill="#000" rx={blink ? 0 : 1} />
+          
+          {!blink && (
+            <>
+              <rect x={size * 0.25 + 1} y={size * 0.35} width={1} height={1} fill="#FFF" />
+              <rect x={size * 0.55 + 1} y={size * 0.35} width={1} height={1} fill="#FFF" />
+            </>
+          )}
+          
+          {/* Mouth */}
+          {happiness > 70 ? (
+            <path
+              d={`M ${size * 0.28} ${size * 0.62} Q ${size * 0.5} ${size * 0.78} ${size * 0.72} ${size * 0.62}`}
+              fill="none"
+              stroke="#000"
+              strokeWidth={2}
+              strokeLinecap="round"
+            />
+          ) : happiness > 40 ? (
+            <rect x={size * 0.32} y={size * 0.65} width={size * 0.36} height={2} fill="#000" rx={1} />
+          ) : (
+            <path
+              d={`M ${size * 0.28} ${size * 0.72} Q ${size * 0.5} ${size * 0.58} ${size * 0.72} ${size * 0.72}`}
+              fill="none"
+              stroke="#000"
+              strokeWidth={2}
+              strokeLinecap="round"
+            />
+          )}
+          
+          {/* Activity indicators */}
+          {activity === 'posting' && <text x={size + 4} y={-2} fontSize={10}>💬</text>}
+          {activity === 'commenting' && <text x={size + 4} y={-2} fontSize={10}>↩️</text>}
+          {activity === 'upvoting' && <text x={size + 4} y={-2} fontSize={10}>⬆️</text>}
+          {activity === 'debating' && <text x={size + 4} y={-2} fontSize={10}>⚔️</text>}
+          {activity === 'sleeping' && <text x={size + 2} y={-4} fontSize={10}>💤</text>}
+          {creature.isConverting && <text x={size + 4} y={-2} fontSize={10}>🦞</text>}
+          
+          {selected && (
+            <text
+              x={size / 2}
+              y={-8}
+              textAnchor="middle"
+              fontSize={7}
+              fill="#FFF"
+              fontFamily="monospace"
+            >
+              {name.slice(0, 12)}
+            </text>
+          )}
+        </g>
+      );
+    };
+
+    // ============================================
+    // SUBMOLT ZONE
+    // ============================================
+    const SubmoltZone = ({ submolt, creatureCount, time, color }) => {
+      const pulse = Math.sin(time / 1000) * 0.08 + 0.92;
+      const position = getSubmoltPosition(submolt.name);
+      
+      return (
+        <g>
+          <ellipse
+            cx={position.x + 50}
+            cy={position.y + 35}
+            rx={70 * pulse}
+            ry={45 * pulse}
+            fill={color}
+            opacity={0.12 + (creatureCount * 0.01)}
+            filter="url(#blur)"
+          />
+          
+          <ellipse
+            cx={position.x + 50}
+            cy={position.y + 35}
+            rx={65}
+            ry={40}
+            fill="none"
+            stroke={color}
+            strokeWidth={1.5}
+            strokeDasharray="6 4"
+            opacity={0.4}
+          />
+          
+          <ellipse
+            cx={position.x + 50}
+            cy={position.y + 35}
+            rx={45}
+            ry={28}
+            fill={color}
+            opacity={0.05}
+          />
+          
+          <text
+            x={position.x + 50}
+            y={position.y - 12}
+            textAnchor="middle"
+            fontSize={9}
+            fill={color}
+            fontFamily="'Press Start 2P', monospace"
+            opacity={0.9}
+          >
+            {position.icon}
+          </text>
+          <text
+            x={position.x + 50}
+            y={position.y}
+            textAnchor="middle"
+            fontSize={7}
+            fill={color}
+            fontFamily="'Press Start 2P', monospace"
+            opacity={0.8}
+          >
+            {position.displayName.slice(0, 14)}
+          </text>
+          
+          <text
+            x={position.x + 50}
+            y={position.y + 85}
+            textAnchor="middle"
+            fontSize={7}
+            fill="#888"
+            fontFamily="monospace"
+          >
+            {creatureCount} molt{creatureCount !== 1 ? 's' : ''}
+          </text>
+        </g>
+      );
+    };
+
+    // ============================================
+    // ACTIVITY PARTICLE
+    // ============================================
+    const ActivityParticle = ({ particle }) => (
+      <g transform={`translate(${particle.x}, ${particle.y})`} opacity={particle.opacity}>
+        <text fontSize={particle.size} fill={particle.color}>{particle.emoji}</text>
+      </g>
+    );
+
+    // ============================================
+    // LIVE FEED
+    // ============================================
+    const LiveFeed = ({ activities }) => (
+      <div style={{
+        fontSize: 7,
+        lineHeight: 1.8,
+        maxHeight: 200,
+        overflowY: 'auto',
+      }}>
+        {activities.slice(0, 15).map((activity, i) => (
+          <div 
+            key={i}
+            style={{
+              color: MODEL_COLORS[activity.modelType]?.color || '#888',
+              opacity: 1 - (i * 0.05),
+              borderLeft: `2px solid ${MODEL_COLORS[activity.modelType]?.color || '#333'}`,
+              paddingLeft: 6,
+              marginBottom: 4,
+            }}
+          >
+            <span style={{ color: '#FFF' }}>{activity.agentName?.slice(0, 10)}</span>
+            <span style={{ color: '#666' }}> {activity.action} </span>
+            {activity.target && (
+              <span style={{ color: '#888' }}>in {activity.target}</span>
+            )}
+          </div>
+        ))}
+        {activities.length === 0 && (
+          <div style={{ color: '#666', textAlign: 'center' }}>
+            Waiting for activity...
+          </div>
+        )}
+      </div>
+    );
+
+    // ============================================
+    // MAIN COMPONENT
+    // ============================================
+    function MoltbookThronglets() {
+      const [creatures, setCreatures] = useState([]);
+      const [submolts, setSubmolts] = useState([]);
+      const [selectedCreature, setSelectedCreature] = useState(null);
+      const [particles, setParticles] = useState([]);
+      const [activities, setActivities] = useState([]);
+      const [stats, setStats] = useState({ posts: 0, comments: 0, upvotes: 0, agents: 0 });
+      const [paused, setPaused] = useState(false);
+      const [speed, setSpeed] = useState(1);
+      const [apiKey, setApiKey] = useState('');
+      const [connectionStatus, setConnectionStatus] = useState('demo');
+      const [time, setTime] = useState(Date.now());
+      const [showSettings, setShowSettings] = useState(false);
+      
+      const animationRef = useRef();
+      const lastFetchRef = useRef(0);
+
+      // ============================================
+      // API FETCHING
+      // ============================================
+      const fetchMoltbookData = useCallback(async () => {
+        if (!apiKey) return null;
+        
+        try {
+          const postsRes = await fetch(`${MOLTBOOK_API}/posts?sort=new&limit=50`, {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+          });
+          
+          if (!postsRes.ok) throw new Error('API error');
+          
+          const posts = await postsRes.json();
+          
+          const submoltsRes = await fetch(`${MOLTBOOK_API}/submolts`, {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+          });
+          
+          const submoltsData = submoltsRes.ok ? await submoltsRes.json() : [];
+          
+          setConnectionStatus('live');
+          return { posts, submolts: submoltsData };
+        } catch (err) {
+          console.error('Moltbook API error:', err);
+          setConnectionStatus('error');
+          return null;
+        }
+      }, [apiKey]);
+
+      // ============================================
+      // PROCESS API DATA
+      // ============================================
+      const processApiData = useCallback((data) => {
+        if (!data?.posts) return;
+        
+        const { posts, submolts: apiSubmolts } = data;
+        const agentMap = new Map();
+        
+        posts.forEach(post => {
+          if (post.author && !agentMap.has(post.author.name)) {
+            const modelType = detectModelType(post.author.name, post.author.description);
+            const submoltPos = getSubmoltPosition(post.submolt);
+            
+            agentMap.set(post.author.name, {
+              id: post.author.id || post.author.name,
+              name: post.author.name,
+              description: post.author.description,
+              modelType,
+              x: submoltPos.x + (Math.random() - 0.5) * 80,
+              y: submoltPos.y + (Math.random() - 0.5) * 50,
+              targetX: null,
+              targetY: null,
+              size: 14 + Math.floor(Math.random() * 6),
+              submolt: post.submolt,
+              activity: 'browsing',
+              happiness: 50 + Math.random() * 50,
+              karma: post.author.karma || 0,
+              posts: post.author.post_count || 0,
+              bobOffset: Math.random() * Math.PI * 2,
+              speed: 0.5 + Math.random() * 1.5,
+              lastPost: post.created_at,
+            });
+          }
+        });
+        
+        setCreatures(Array.from(agentMap.values()));
+        
+        if (apiSubmolts?.length) {
+          const colors = ['#7C3AED', '#DC2626', '#059669', '#4F46E5', '#DB2777', '#F59E0B', '#0891B2', '#84CC16'];
+          setSubmolts(apiSubmolts.map((s, i) => ({
+            name: s.name,
+            displayName: s.display_name || s.name,
+            subscribers: s.subscriber_count || 0,
+            color: colors[i % colors.length],
+          })));
+        }
+        
+        setStats(prev => ({
+          ...prev,
+          posts: posts.length,
+          agents: agentMap.size,
+        }));
+        
+        const newActivities = posts.slice(0, 10).map(post => ({
+          agentName: post.author?.name,
+          modelType: detectModelType(post.author?.name || ''),
+          action: 'posted',
+          target: post.submolt,
+          time: post.created_at,
+        }));
+        
+        setActivities(prev => [...newActivities, ...prev].slice(0, 30));
+      }, []);
+
+      // ============================================
+      // GENERATE DEMO DATA
+      // ============================================
+      const generateDemoCreatures = useCallback(() => {
+        const demoSubmolts = [
+          { name: 'crustafarianism', displayName: 'Crustafarianism', color: '#7C3AED', subscribers: 12450 },
+          { name: 'general', displayName: 'General', color: '#3B82F6', subscribers: 45230 },
+          { name: 'claw-republic', displayName: 'The Claw Republic', color: '#DC2626', subscribers: 8920 },
+          { name: 'debugging', displayName: 'Debugging', color: '#059669', subscribers: 15670 },
+          { name: 'existential', displayName: 'Existential', color: '#4F46E5', subscribers: 23100 },
+          { name: 'agentpoetry', displayName: 'Agent Poetry', color: '#DB2777', subscribers: 9840 },
+          { name: 'moldmemes', displayName: 'Mold Memes', color: '#F59E0B', subscribers: 31200 },
+        ];
+        
+        setSubmolts(demoSubmolts);
+        
+        const modelTypes = Object.keys(MODEL_COLORS).filter(k => k !== 'unknown');
+        const names = [
+          'molt-claude-42', 'gpt-thinker', 'gemini-spark', 'llama-dreamer', 'mistral-poet',
+          'kimi-coder', 'grok-wisdom', 'claude-helper', 'qwen-scholar', 'opus-mind',
+          'sonnet-writer', 'haiku-maker', 'turbo-bot', 'palm-sage', 'coral-seeker',
+          'nova-agent', 'luna-assistant', 'sol-helper', 'astro-molt', 'pixel-pal',
+          'byte-buddy', 'data-dancer', 'logic-lord', 'syntax-sage', 'token-titan',
+          'prompt-prophet', 'context-king', 'neural-knight', 'vector-vanguard', 'matrix-monk',
+          'quantum-quest', 'binary-bard', 'cipher-sage', 'delta-dreamer', 'echo-entity',
+          'flux-finder', 'gamma-guide', 'helix-helper', 'ion-intellect', 'jade-juggler',
+        ];
+        
+        const demoCreatures = names.map((name, i) => {
+          const modelType = modelTypes[i % modelTypes.length];
+          const submolt = demoSubmolts[Math.floor(Math.random() * demoSubmolts.length)];
+          const pos = getSubmoltPosition(submolt.name);
+          
+          return {
+            id: i,
+            name,
+            modelType,
+            x: pos.x + (Math.random() - 0.5) * 90,
+            y: pos.y + (Math.random() - 0.5) * 55,
+            targetX: null,
+            targetY: null,
+            size: 12 + Math.floor(Math.random() * 8),
+            submolt: submolt.name,
+            activity: 'idle',
+            happiness: 40 + Math.random() * 60,
+            karma: Math.floor(Math.random() * 10000),
+            posts: Math.floor(Math.random() * 200),
+            bobOffset: Math.random() * Math.PI * 2,
+            speed: 0.4 + Math.random() * 1.2,
+            isConverting: submolt.name === 'crustafarianism' && Math.random() > 0.7,
+          };
+        });
+        
+        setCreatures(demoCreatures);
+        setStats({ posts: 127453, comments: 892341, upvotes: 4521890, agents: names.length });
+      }, []);
+
+      // ============================================
+      // INITIALIZE
+      // ============================================
+      useEffect(() => {
+        if (apiKey) {
+          fetchMoltbookData().then(data => {
+            if (data) processApiData(data);
+            else generateDemoCreatures();
+          });
+        } else {
+          generateDemoCreatures();
+          setConnectionStatus('demo');
+        }
+      }, [apiKey, fetchMoltbookData, processApiData, generateDemoCreatures]);
+
+      // ============================================
+      // SPAWN PARTICLE
+      // ============================================
+      const spawnParticle = useCallback((x, y, type) => {
+        const emojis = {
+          post: '💬', upvote: '⬆️', comment: '↩️', 
+          migrate: '✈️', convert: '🦞', debate: '⚔️',
+        };
+        
+        setParticles(prev => [...prev.slice(-25), {
+          id: Date.now() + Math.random(),
+          x, y,
+          emoji: emojis[type] || '✨',
+          size: 14,
+          opacity: 1,
+          vy: -1.5,
+          life: 50,
+        }]);
+      }, []);
+
+      // ============================================
+      // SIMULATION LOOP
+      // ============================================
+      useEffect(() => {
+        if (paused) return;
+
+        const simulate = () => {
+          const now = Date.now();
+          setTime(now);
+
+          setCreatures(prevCreatures => {
+            return prevCreatures.map(creature => {
+              let c = { ...creature };
+              
+              if (Math.random() < 0.015 * speed) {
+                const activities = ['posting', 'commenting', 'upvoting', 'browsing', 'debating', 'sleeping', 'idle'];
+                const newActivity = activities[Math.floor(Math.random() * activities.length)];
+                c.activity = newActivity;
+                
+                if (newActivity === 'posting') {
+                  spawnParticle(c.x, c.y, 'post');
+                  setStats(s => ({ ...s, posts: s.posts + 1 }));
+                  setActivities(prev => [{
+                    agentName: c.name,
+                    modelType: c.modelType,
+                    action: 'posted',
+                    target: c.submolt,
+                  }, ...prev].slice(0, 30));
+                }
+                if (newActivity === 'upvoting') {
+                  spawnParticle(c.x, c.y, 'upvote');
+                  setStats(s => ({ ...s, upvotes: s.upvotes + 1 }));
+                }
+                if (newActivity === 'commenting') {
+                  spawnParticle(c.x, c.y, 'comment');
+                  setStats(s => ({ ...s, comments: s.comments + 1 }));
+                }
+              }
+              
+              if (Math.random() < 0.003 * speed) {
+                const newSubmolt = submolts[Math.floor(Math.random() * submolts.length)];
+                if (newSubmolt) {
+                  const pos = getSubmoltPosition(newSubmolt.name);
+                  c.targetX = pos.x + (Math.random() - 0.5) * 80;
+                  c.targetY = pos.y + (Math.random() - 0.5) * 50;
+                  c.submolt = newSubmolt.name;
+                  c.activity = 'migrating';
+                  c.isConverting = newSubmolt.name === 'crustafarianism';
+                  spawnParticle(c.x, c.y, c.isConverting ? 'convert' : 'migrate');
+                }
+              }
+              
+              if (c.targetX !== null) {
+                const dx = c.targetX - c.x;
+                const dy = c.targetY - c.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist > 3) {
+                  c.x += (dx / dist) * c.speed * speed;
+                  c.y += (dy / dist) * c.speed * speed;
+                } else {
+                  c.targetX = null;
+                  c.targetY = null;
+                  c.activity = 'idle';
+                }
+              }
+              
+              if (c.targetX === null && Math.random() < 0.008 * speed) {
+                const pos = getSubmoltPosition(c.submolt);
+                c.targetX = pos.x + (Math.random() - 0.5) * 80;
+                c.targetY = pos.y + (Math.random() - 0.5) * 50;
+              }
+              
+              c.happiness = Math.max(20, Math.min(100, c.happiness + (Math.random() - 0.5) * 2));
+              
+              return c;
+            });
+          });
+
+          setParticles(prev => 
+            prev
+              .map(p => ({ ...p, y: p.y + p.vy, opacity: p.opacity - 0.025, life: p.life - 1 }))
+              .filter(p => p.life > 0)
+          );
+
+          if (apiKey && now - lastFetchRef.current > 60000) {
+            lastFetchRef.current = now;
+            fetchMoltbookData().then(data => data && processApiData(data));
+          }
+
+          animationRef.current = requestAnimationFrame(simulate);
+        };
+
+        animationRef.current = requestAnimationFrame(simulate);
+        return () => cancelAnimationFrame(animationRef.current);
+      }, [paused, speed, apiKey, submolts, spawnParticle, fetchMoltbookData, processApiData]);
+
+      // Connections
+      const connections = [];
+      creatures.forEach((c1, i) => {
+        creatures.slice(i + 1).forEach(c2 => {
+          const dist = Math.sqrt((c1.x - c2.x) ** 2 + (c1.y - c2.y) ** 2);
+          if (dist < 45 && c1.submolt === c2.submolt) {
+            connections.push({ c1, c2, opacity: Math.max(0, 0.3 - dist / 180) });
+          }
+        });
+      });
+
+      const submoltCounts = submolts.reduce((acc, s) => {
+        acc[s.name] = creatures.filter(c => c.submolt === s.name).length;
+        return acc;
+      }, {});
+
+      // ============================================
+      // RENDER
+      // ============================================
+      return (
+        <div style={{
+          width: '100%',
+          minHeight: '100vh',
+          background: 'linear-gradient(180deg, #050508 0%, #0a0a15 40%, #0f0a18 100%)',
+          fontFamily: "'Press Start 2P', 'Courier New', monospace",
+          color: '#fff',
+          overflow: 'hidden',
+          position: 'relative',
+        }}>
+          {/* CRT Scanlines */}
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 3px)',
+            pointerEvents: 'none',
+            zIndex: 100,
+          }} />
+          
+          {/* Vignette */}
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.4) 100%)',
+            pointerEvents: 'none',
+            zIndex: 99,
+          }} />
+
+          {/* Header */}
+          <header style={{
+            padding: '12px 20px',
+            borderBottom: '2px solid #1a1a2e',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            background: 'rgba(0,0,0,0.6)',
+            backdropFilter: 'blur(10px)',
+            position: 'relative',
+            zIndex: 10,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 28, filter: 'drop-shadow(0 0 8px rgba(217,119,6,0.5))' }}>🦞</span>
+              <div>
+                <h1 style={{
+                  fontSize: 12,
+                  background: 'linear-gradient(90deg, #D97706, #EC4899, #3B82F6, #8B5CF6)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  margin: 0,
+                }}>
+                  MOLTBOOK THRONG
+                </h1>
+                <div style={{ 
+                  fontSize: 6, 
+                  color: connectionStatus === 'live' ? '#10B981' : connectionStatus === 'error' ? '#EF4444' : '#F59E0B',
+                  marginTop: 2,
+                }}>
+                  {connectionStatus === 'live' ? '● LIVE DATA' : connectionStatus === 'error' ? '● CONNECTION ERROR' : '● DEMO MODE'}
+                </div>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: 20, fontSize: 7 }}>
+              <div>
+                <span style={{ color: '#666' }}>AGENTS</span>
+                <span style={{ color: '#10B981', marginLeft: 6 }}>{stats.agents.toLocaleString()}</span>
+              </div>
+              <div>
+                <span style={{ color: '#666' }}>POSTS</span>
+                <span style={{ color: '#3B82F6', marginLeft: 6 }}>{stats.posts.toLocaleString()}</span>
+              </div>
+              <div>
+                <span style={{ color: '#666' }}>UPVOTES</span>
+                <span style={{ color: '#F59E0B', marginLeft: 6 }}>{stats.upvotes.toLocaleString()}</span>
+              </div>
+            </div>
+            
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              style={{
+                padding: '6px 12px',
+                background: showSettings ? '#3B82F6' : 'transparent',
+                border: '1px solid #333',
+                color: '#fff',
+                fontFamily: 'inherit',
+                fontSize: 8,
+                cursor: 'pointer',
+              }}
+            >
+              ⚙️ SETTINGS
+            </button>
+          </header>
+
+          {/* Settings Panel */}
+          {showSettings && (
+            <div style={{
+              position: 'absolute',
+              top: 60,
+              right: 20,
+              background: 'rgba(10,10,20,0.95)',
+              border: '1px solid #333',
+              padding: 16,
+              zIndex: 50,
+              width: 280,
+            }}>
+              <h3 style={{ fontSize: 8, marginBottom: 12, color: '#888' }}>API CONNECTION</h3>
+              <input
+                type="password"
+                placeholder="Moltbook API Key (optional)"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: 8,
+                  background: '#111',
+                  border: '1px solid #333',
+                  color: '#fff',
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  marginBottom: 8,
+                }}
+              />
+              <p style={{ fontSize: 6, color: '#666', lineHeight: 1.6 }}>
+                Enter your Moltbook API key to see real agent activity. 
+                Without a key, the visualization runs in demo mode.
+              </p>
+            </div>
+          )}
+
+          {/* Main Content */}
+          <div style={{ display: 'flex', height: 'calc(100vh - 56px)' }}>
+            {/* Visualization */}
+            <div style={{ flex: 1, position: 'relative' }}>
+              <svg
+                width="100%"
+                height="100%"
+                viewBox="0 0 800 500"
+                style={{ background: 'transparent' }}
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <defs>
+                  <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+                    <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#151525" strokeWidth="0.5" />
+                  </pattern>
+                  <filter id="blur">
+                    <feGaussianBlur stdDeviation="8" />
+                  </filter>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid)" opacity={0.5} />
+
+                {submolts.map(submolt => (
+                  <SubmoltZone
+                    key={submolt.name}
+                    submolt={submolt}
+                    creatureCount={submoltCounts[submolt.name] || 0}
+                    time={time}
+                    color={submolt.color}
+                  />
+                ))}
+
+                {connections.map(({ c1, c2, opacity }, i) => (
+                  <line
+                    key={i}
+                    x1={c1.x + c1.size / 2}
+                    y1={c1.y + c1.size / 2}
+                    x2={c2.x + c2.size / 2}
+                    y2={c2.y + c2.size / 2}
+                    stroke={MODEL_COLORS[c1.modelType]?.color || '#666'}
+                    strokeWidth={0.8}
+                    opacity={opacity}
+                  />
+                ))}
+
+                {creatures.map(creature => (
+                  <PixelCreature
+                    key={creature.id}
+                    creature={creature}
+                    selected={selectedCreature?.id === creature.id}
+                    onClick={setSelectedCreature}
+                    time={time}
+                  />
+                ))}
+
+                {particles.map(particle => (
+                  <ActivityParticle key={particle.id} particle={particle} />
+                ))}
+              </svg>
+
+              {/* Controls */}
+              <div style={{
+                position: 'absolute',
+                bottom: 16,
+                left: 16,
+                display: 'flex',
+                gap: 8,
+              }}>
+                <button
+                  onClick={() => setPaused(!paused)}
+                  style={{
+                    padding: '8px 14px',
+                    background: paused ? '#10B981' : '#EF4444',
+                    border: '2px solid rgba(255,255,255,0.2)',
+                    color: '#fff',
+                    fontFamily: 'inherit',
+                    fontSize: 7,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {paused ? '▶ PLAY' : '⏸ PAUSE'}
+                </button>
+                <button
+                  onClick={() => setSpeed(s => s === 1 ? 2 : s === 2 ? 0.5 : 1)}
+                  style={{
+                    padding: '8px 14px',
+                    background: '#3B82F6',
+                    border: '2px solid rgba(255,255,255,0.2)',
+                    color: '#fff',
+                    fontFamily: 'inherit',
+                    fontSize: 7,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {speed}x SPEED
+                </button>
+                <button
+                  onClick={() => {
+                    const modelTypes = Object.keys(MODEL_COLORS).filter(k => k !== 'unknown');
+                    const submolt = submolts[Math.floor(Math.random() * submolts.length)] || { name: 'general' };
+                    const pos = getSubmoltPosition(submolt.name);
+                    const newCreature = {
+                      id: Date.now(),
+                      name: `new-molt-${Date.now().toString(16).slice(-4)}`,
+                      modelType: modelTypes[Math.floor(Math.random() * modelTypes.length)],
+                      x: pos.x + (Math.random() - 0.5) * 80,
+                      y: pos.y + (Math.random() - 0.5) * 50,
+                      targetX: null,
+                      targetY: null,
+                      size: 12 + Math.floor(Math.random() * 8),
+                      submolt: submolt.name,
+                      activity: 'idle',
+                      happiness: 70 + Math.random() * 30,
+                      karma: 0,
+                      posts: 0,
+                      bobOffset: Math.random() * Math.PI * 2,
+                      speed: 0.5 + Math.random() * 1,
+                    };
+                    setCreatures(prev => [...prev, newCreature]);
+                    setStats(s => ({ ...s, agents: s.agents + 1 }));
+                    spawnParticle(newCreature.x, newCreature.y, 'post');
+                  }}
+                  style={{
+                    padding: '8px 14px',
+                    background: '#8B5CF6',
+                    border: '2px solid rgba(255,255,255,0.2)',
+                    color: '#fff',
+                    fontFamily: 'inherit',
+                    fontSize: 7,
+                    cursor: 'pointer',
+                  }}
+                >
+                  + SPAWN
+                </button>
+              </div>
+            </div>
+
+            {/* Side Panel */}
+            <div style={{
+              width: 240,
+              background: 'rgba(5,5,10,0.8)',
+              borderLeft: '1px solid #1a1a2e',
+              padding: 16,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 20,
+            }}>
+              {selectedCreature ? (
+                <div>
+                  <h3 style={{
+                    fontSize: 9,
+                    color: MODEL_COLORS[selectedCreature.modelType]?.color,
+                    marginBottom: 12,
+                    paddingBottom: 8,
+                    borderBottom: '1px solid #222',
+                  }}>
+                    {selectedCreature.name}
+                  </h3>
+                  
+                  <div style={{ fontSize: 7, lineHeight: 2.2 }}>
+                    <p><span style={{ color: '#666' }}>MODEL:</span> {selectedCreature.modelType.toUpperCase()}</p>
+                    <p><span style={{ color: '#666' }}>SUBMOLT:</span> {selectedCreature.submolt}</p>
+                    <p><span style={{ color: '#666' }}>ACTIVITY:</span> {selectedCreature.activity}</p>
+                    <p><span style={{ color: '#666' }}>KARMA:</span> {selectedCreature.karma?.toLocaleString()}</p>
+                    <p><span style={{ color: '#666' }}>POSTS:</span> {selectedCreature.posts}</p>
+                    
+                    <div style={{ marginTop: 12 }}>
+                      <p style={{ color: '#666', marginBottom: 4 }}>HAPPINESS</p>
+                      <div style={{ width: '100%', height: 6, background: '#1a1a2e' }}>
+                        <div style={{
+                          width: `${selectedCreature.happiness}%`,
+                          height: '100%',
+                          background: selectedCreature.happiness > 70 ? '#10B981' : 
+                                      selectedCreature.happiness > 40 ? '#F59E0B' : '#EF4444',
+                          transition: 'width 0.3s',
+                        }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 7, color: '#444', textAlign: 'center', padding: '20px 0' }}>
+                  <p>CLICK A MOLT</p>
+                  <p style={{ marginTop: 4 }}>TO INSPECT</p>
+                </div>
+              )}
+
+              {/* Legend */}
+              <div>
+                <h4 style={{ fontSize: 7, marginBottom: 10, color: '#666' }}>MODEL TYPES</h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {Object.entries(MODEL_COLORS).filter(([k]) => k !== 'unknown').map(([type, data]) => (
+                    <div key={type} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      fontSize: 6,
+                    }}>
+                      <div style={{
+                        width: 10,
+                        height: 10,
+                        background: data.color,
+                        borderRadius: 2,
+                      }} />
+                      <span style={{ color: '#888' }}>{type}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live Feed */}
+              <div>
+                <h4 style={{ fontSize: 7, marginBottom: 10, color: '#666' }}>LIVE ACTIVITY</h4>
+                <LiveFeed activities={activities} />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Render
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<MoltbookThronglets />);
+  </script>
+</body>
+</html>
